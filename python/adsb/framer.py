@@ -96,7 +96,7 @@ class framer(gr.sync_block):
             in0_rise_edge_idxs = trans_indxs[start_idx:len(in0_fall_edge_idxs)*2:2]
 
             # Find the index of the center of each pulses
-            pulse_idxs = np.mean((in0_fall_edge_idxs, in0_rise_edge_idxs), axis=0, dtype=in0_fall_edge_idxs.dtype)
+            pulse_idxs = (in0_fall_edge_idxs + in0_rise_edge_idxs) >> 1
 
             # For each pulse found, check if that pulse is the beginning of the ADS-B
             # preamble.
