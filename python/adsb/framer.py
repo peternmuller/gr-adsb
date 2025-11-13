@@ -136,9 +136,25 @@ class framer(gr.sync_block):
                         # less than the average.  So add 1.6 dB to get a more accurate power
                         # SNR.
                         if pulse_idx < NUM_NOISE_SAMPLES:
-                            snr = 10.0*np.log10(in0[pulse_idx]/np.median(in0[0:pulse_idx])) + 1.6
+                            noise_slice = in0[0:pulse_idx]
+                            if len(noise_slice) > 0:
+                                noise_median = np.median(noise_slice)
+                                if noise_median > 0:
+                                    snr = 10.0*np.log10(in0[pulse_idx]/noise_median) + 1.6
+                                else:
+                                    snr = 0.0
+                            else:
+                                snr = 0.0
                         else:
-                            snr = 10.0*np.log10(in0[pulse_idx]/np.median(in0[(pulse_idx - NUM_NOISE_SAMPLES):pulse_idx])) + 1.6
+                            noise_slice = in0[(pulse_idx - NUM_NOISE_SAMPLES):pulse_idx]
+                            if len(noise_slice) > 0:
+                                noise_median = np.median(noise_slice)
+                                if noise_median > 0:
+                                    snr = 10.0*np.log10(in0[pulse_idx]/noise_median) + 1.6
+                                else:
+                                    snr = 0.0
+                            else:
+                                snr = 0.0
 
                         # Calculate when this burst will end so we don"t have to trigger
                         # on all the "pulses" in this packet
