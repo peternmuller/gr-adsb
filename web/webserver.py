@@ -38,10 +38,18 @@ ZMQ_PORT = 5001
 
 app = Flask(__name__, static_url_path="")
 app.config["SECRET_KEY"] = "secret!"
-socketio = SocketIO(app, cors_allowed_origins=f"http://{HTTP_ADDRESS}:{HTTP_PORT}")
+
+print(f"[webserver] Starting Flask app on http://{HTTP_ADDRESS}:{HTTP_PORT}")
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=[f"http://{HTTP_ADDRESS}:{HTTP_PORT}", "http://localhost:5000", "*"],
+    async_mode="gevent",
+)
+print("[webserver] SocketIO initialized with CORS for:", [f"http://{HTTP_ADDRESS}:{HTTP_PORT}", "http://localhost:5000", "*"])
 
 
 def zmq_thread():
+    print(f"[webserver] ZMQ thread starting. Connecting to tcp://{ZMQ_ADDRESS}:{ZMQ_PORT}")
     # Establish ZMQ context and socket
     context = zmq.Context()
     socket = context.socket(zmq.SUB)
@@ -51,30 +59,43 @@ def zmq_thread():
     while True:
         # Receive decoded ADS-B message from the decoder over ZMQ
         pdu_bin = socket.recv()
-        pdu = pmt.deserialize_str(pdu_bin)
-        plane = pmt.to_python(pmt.car(pdu))
+        print("[webserver] Received raw PDU bytes from ZMQ, length:", len(pdu_bin))
+        try:
+            pdu = pmt.deserialize_str(pdu_bin)
+            plane = pmt.to_python(pmt.car(pdu))
+            print("[webserver] Decoded plane dict from ZMQ:", plane)
+        except Exception as e:
+            print("[webserver] ERROR decoding PDU from ZMQ:", e)
+            continue
 
-        socketio.emit("updatePlane", plane)
+        try:
+            socketio.emit("updatePlane", plane)
+            print("[webserver] Emitted updatePlane via SocketIO for ICAO:", plane.get("icao"))
+        except Exception as e:
+            print("[webserver] ERROR emitting updatePlane via SocketIO:", e)
 
 
 @app.route("/")
 def index():
+    print("[webserver] HTTP GET / - serving index.html")
     return app.send_static_file("index.html")
 
 
 @socketio.on("connect")
 def connect():
-    print("Client connected", request.sid)
+    print("[webserver] Client connected:", request.sid)
 
 
 @socketio.on("disconnect")
 def disconnect():
-    print("Client disconnected", request.sid)
+    print("[webserver] Client disconnected:", request.sid)
 
 
 if __name__ == "__main__":
+    print("[webserver] __main__ starting zmq_thread...")
     thread = Thread(target=zmq_thread)
     thread.daemon = True
     thread.start()
+    print("[webserver] zmq_thread started. Launching SocketIO web server...")
 
     socketio.run(app, host=HTTP_ADDRESS, port=HTTP_PORT, debug=True, use_reloader=False)

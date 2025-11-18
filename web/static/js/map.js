@@ -17,25 +17,58 @@
 // Boston, MA 02110-1301, USA.
 //
 
+console.log('[map.js] Script loaded');
+
 var planes = {};
 
 // Create SocketIO instance
-var socket = io('http://localhost:5000');
+console.log('[map.js] Initializing Socket.IO client (v4.x)...');
+var socket;
+try {
+  // Explicitly configure transports/path for Socket.IO 4.8.1
+  socket = io('http://localhost:5000', {
+    transports: ['websocket', 'polling'],
+    path: '/socket.io',
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+  });
+} catch (e) {
+  console.error('[map.js] ERROR creating Socket.IO client:', e);
+}
 
-socket.on('connect', function() {
-  console.log('Client has connected via SocketIO.');
-});
-socket.on('disconnect', function() {
-  console.log('Client disconnected via SocketIO.');
-});
-socket.on('updatePlane', function(plane) {
-  updatePlane(map, plane);
-});
+if (socket) {
+  socket.on('connect', function() {
+    console.log('[map.js] Client has connected via SocketIO. Socket ID:', socket.id);
+  });
+  socket.on('disconnect', function(reason) {
+    console.log('[map.js] Client disconnected via SocketIO. Reason:', reason);
+  });
+  socket.on('connect_error', function(err) {
+    console.error('[map.js] Socket.IO connect_error:', err);
+  });
+  socket.on('error', function(err) {
+    console.error('[map.js] Socket.IO error:', err);
+  });
+  socket.on('updatePlane', function(plane) {
+    console.log('[map.js] Received updatePlane event. Raw plane object:', plane);
+    updatePlane(map, plane);
+  });
+} else {
+  console.error('[map.js] Socket.IO client not initialized; no plane updates will be received.');
+}
 
 // Create the leaflet map
+console.log('[map.js] Initializing Leaflet map...');
 var map = L.map('map');
 
 // Attempt to locate user. Map will also center to first plane, once received.
+map.on('locationfound', function(e) {
+  console.log('[map.js] locationfound event:', e.latlng);
+});
+map.on('locationerror', function(e) {
+  console.warn('[map.js] locationerror event:', e.message);
+});
 map.locate({setView: true});
 
 // Load various tiles
@@ -77,6 +110,7 @@ var Stamen_TonerLite = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/to
 });
 
 // Set default tile set
+console.log('[map.js] Adding default tile layer CartoDB_VoyagerLabelsUnder');
 CartoDB_VoyagerLabelsUnder.addTo(map);
 
 // Add layer/tile control
@@ -119,19 +153,40 @@ var planeIcon = L.icon({
 
 
 function updatePlane(map, plane) {
-  if (planes[plane.icao] == undefined) {
-    addPlane(map, plane);
+  console.log('[map.js] updatePlane called with plane:', plane);
+
+  if (!plane) {
+    console.warn('[map.js] updatePlane called with null/undefined plane');
+    return;
   }
-  else {
+
+  if (!plane.icao) {
+    console.warn('[map.js] Plane object missing icao field:', plane);
+    return;
+  }
+
+  if (plane.latitude === undefined || plane.longitude === undefined) {
+    console.warn('[map.js] Plane object missing latitude/longitude:', plane);
+    return;
+  }
+
+  if (planes[plane.icao] === undefined) {
+    console.log('[map.js] Plane not tracked yet; calling addPlane for ICAO', plane.icao);
+    addPlane(map, plane);
+  } else {
+    console.log('[map.js] Plane already tracked; calling movePlane for ICAO', plane.icao);
     movePlane(map, plane);
   }
 }
 
 
 function addPlane(map, plane) {
-  latlng = [plane.latitude, plane.longitude];
+  console.log('[map.js] addPlane called for ICAO', plane.icao, 'with position', plane.latitude, plane.longitude);
+
+  var latlng = [plane.latitude, plane.longitude];
   // Set initial view of map on first plane reception
   if (Object.keys(planes).length == 0) {
+    console.log('[map.js] First plane received; setting map view to', latlng);
     map.setView(latlng, 9);
   }
   planes[plane.icao] = {};
@@ -140,6 +195,7 @@ function addPlane(map, plane) {
     rotationAngle: headingToRotationAngle(plane.heading),
     rotationOrigin: 'center center'
   }).addTo(map);
+  console.log('[map.js] Marker created and added to map for ICAO', plane.icao);
   planes[plane.icao]['tooltip'] = L.tooltip(formatTooltip(plane));
   planes[plane.icao]['popup'] = L.popup(formatPopup(plane));
   planes[plane.icao]['marker'].bindTooltip(planes[plane.icao]['tooltip']);
@@ -150,12 +206,14 @@ function addPlane(map, plane) {
 
 
 function movePlane(map, plane) {
-  latlng = [plane.latitude, plane.longitude];
+  console.log('[map.js] movePlane called for ICAO', plane.icao, 'with position', plane.latitude, plane.longitude);
+
+  var latlng = [plane.latitude, plane.longitude];
   planes[plane.icao]['marker'].setLatLng(latlng);
   planes[plane.icao]['marker'].setRotationAngle(headingToRotationAngle(plane.heading));
   planes[plane.icao]['tooltip'].setContent(formatTooltip(plane));
   planes[plane.icao]['popup'].setContent(formatPopup(plane));
-  prev_latlng = planes[plane.icao]['last_location']
+  var prev_latlng = planes[plane.icao]['last_location'];
   planes[plane.icao]['track'].addLayer(L.polyline([prev_latlng, latlng], {color: altitudeColor(plane.altitude)}).addTo(map));
   planes[plane.icao]['last_location'] = latlng;
 }
@@ -167,9 +225,11 @@ function formatTooltip(plane) {
 
 
 function formatPopup(plane) {
-  str = '<table>';
+  console.log('[map.js] formatPopup called for ICAO', plane && plane.icao);
+
+  var str = '<table>';
   str += '<tr><td><b>ICAO</b></td><td>' + plane.icao + '</td></tr>';
-  str += '<tr><td><b>Callsign</b></td><td><a href=\"http://flightaware.com/live/flight/' + plane.callsign + '\" target=\"_blank\">' + plane.callsign + '</a></td></tr>';
+  str += '<tr><td><b>Callsign</b></td><td><a href=\"https://www.flightaware.com/live/flight/' + plane.callsign + '\" target=\"_blank\">' + plane.callsign + '</a></td></tr>';
   str += '<tr><td><b>Datetime</b></td><td>' + plane.datetime + '</td></tr>';
   str += '<tr><td><b>Altitude</b></td><td>' + plane.altitude + ' ft</td></tr>';
   str += '<tr><td><b>Vertical Rate</b></td><td>' + plane.vertical_rate + ' ft/min</td></tr>';
@@ -184,13 +244,15 @@ function formatPopup(plane) {
 
 
 function headingToRotationAngle(heading) {
+  console.log('[map.js] headingToRotationAngle called with heading:', heading);
   return -heading;
 }
 
 
 function altitudeColor(altitude) {
+  console.log('[map.js] altitudeColor called with altitude:', altitude);
   if (altitude != undefined && altitude != -1) {
-    idx = Math.floor(altitude / 1000);
+    var idx = Math.floor(altitude / 1000);
     if (idx < 0) {
       idx = 0;
     }
