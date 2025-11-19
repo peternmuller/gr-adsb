@@ -256,6 +256,8 @@ CALLSIGN_CHAR_LUT = "_ABCDEFGHIJKLMNOPQRSTUVWXYZ_____ _______________0123456789_
 
 MAX_NUM_BITS = 112
 CPR_TIMEOUT_S = 30 # Seconds consider CPR-encoded lat/lon info invalid
+CPR_MAX_PAIR_GAP_S = 10 # Max delta between even/odd frames for global CPR solution
+MAX_POSITION_JUMP_DEG = 1.0 # Reject solutions that jump more than 1 deg per update
 PLANE_TIMEOUT_S = 1*60
 INSERTS_PER_TRANSACTION = 50
 FT_PER_METER = 3.28084
@@ -1087,24 +1089,34 @@ class decoder(gr.sync_block):
             (lat, lon) = self.calculate_lat_lon(self.plane_dict[self.aa_str]["cpr"])
             alt = self.decode_ac12(self.bits[40:40+12])
 
-            # TODO: Temporary hack to make sure bad lat/lons don"t get published
-            if (lat - self.plane_dict[self.aa_str]["latitude"]) < 0.1 and (lat - self.plane_dict[self.aa_str]["latitude"]) < 0.1:
-                valid_lat_lon = True
+            valid_lat_lon = not (np.isnan(lat) or np.isnan(lon))
+            if valid_lat_lon:
+                prev_lat = self.plane_dict[self.aa_str]["latitude"]
+                prev_lon = self.plane_dict[self.aa_str]["longitude"]
+                if np.isnan(prev_lat) == False and np.isnan(prev_lon) == False:
+                    if (abs(lat - prev_lat) > MAX_POSITION_JUMP_DEG or
+                            abs(lon - prev_lon) > MAX_POSITION_JUMP_DEG):
+                        valid_lat_lon = False
+                        self.log("debug", "Rejecting CPR jump", {
+                            "icao": self.aa_str,
+                            "prev_lat": prev_lat,
+                            "prev_lon": prev_lon,
+                            "candidate_lat": lat,
+                            "candidate_lon": lon,
+                        })
             else:
-                # Figure out what went wrong
-                valid_lat_lon = False
-                self.log("debug", "valid_lat_lon", valid_lat_lon)
-                self.log("debug", "lat_cpr", lat_cpr)
-                self.log("debug", "lon_cpr", lon_cpr)
-                self.log("debug", "lat", lat)
-                self.log("debug", "lon", lon)
+                self.log("debug", "Invalid CPR solution", {
+                    "icao": self.aa_str,
+                    "lat_cpr": lat_cpr,
+                    "lon_cpr": lon_cpr,
+                    "lat": lat,
+                    "lon": lon,
+                })
 
             self.plane_dict[self.aa_str]["altitude"] = alt
-            if np.isnan(lat) == False and np.isnan(lon) == False:
+            if valid_lat_lon:
                 self.plane_dict[self.aa_str]["latitude"] = lat
                 self.plane_dict[self.aa_str]["longitude"] = lon
-
-            if valid_lat_lon:
                 self.publish_decoded_pdu(self.aa_str)
 
             self.log("info", "Surveillance Status (SS)", ss, SS_STR_LUT[ss])
@@ -1273,7 +1285,16 @@ class decoder(gr.sync_block):
         lat_dec = np.nan
         lon_dec = np.nan
 
-        if (int(time.time()) - cpr[0][2]) < CPR_TIMEOUT_S and (int(time.time()) - cpr[1][2]) < CPR_TIMEOUT_S:
+        current_ts = int(time.time())
+        even_age = current_ts - cpr[0][2]
+        odd_age = current_ts - cpr[1][2]
+
+        if any(np.isnan(value) for value in (cpr[0][0], cpr[0][1], cpr[1][0], cpr[1][1])):
+            return (lat_dec, lon_dec)
+
+        if even_age < CPR_TIMEOUT_S and odd_age < CPR_TIMEOUT_S:
+            if abs(cpr[0][2] - cpr[1][2]) > CPR_MAX_PAIR_GAP_S:
+                return (lat_dec, lon_dec)
             # Get fractional lat/lon for the even and odd frame
             # Even frame
             lat_cpr_even = float(cpr[0][0])/131072

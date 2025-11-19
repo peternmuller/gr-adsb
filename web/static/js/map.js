@@ -165,8 +165,15 @@ function updatePlane(map, plane) {
     return;
   }
 
-  if (plane.latitude === undefined || plane.longitude === undefined) {
-    console.warn('[map.js] Plane object missing latitude/longitude:', plane);
+  if (
+    plane.latitude === undefined ||
+    plane.longitude === undefined ||
+    plane.latitude === null ||
+    plane.longitude === null ||
+    Number.isNaN(plane.latitude) ||
+    Number.isNaN(plane.longitude)
+  ) {
+    console.warn('[map.js] Plane object missing/invalid latitude/longitude:', plane);
     return;
   }
 
