@@ -420,7 +420,7 @@ class decoder(gr.sync_block):
             last_seen = datetime.datetime.fromtimestamp(self.plane_dict[icao]["last_seen"], datetime.timezone.utc).strftime("%H:%M:%S")
 
             if self.plane_dict[icao]["callsign"] is not None:
-                callsign = f"{self.plane_dict[icao]["callsign"]:8s}"
+                callsign = f'{self.plane_dict[icao]["callsign"]:8s}'
             else:
                 callsign = " "*8
 
