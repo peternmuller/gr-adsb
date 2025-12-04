@@ -197,16 +197,19 @@ function addPlane(map, plane) {
     map.setView(latlng, 9);
   }
   planes[plane.icao] = {};
-  planes[plane.icao]['marker'] = L.marker(latlng, {
+  var marker = L.marker(latlng, {
     icon: planeIcon,
     rotationAngle: headingToRotationAngle(plane.heading),
     rotationOrigin: 'center center'
   }).addTo(map);
   console.log('[map.js] Marker created and added to map for ICAO', plane.icao);
-  planes[plane.icao]['tooltip'] = L.tooltip(formatTooltip(plane));
-  planes[plane.icao]['popup'] = L.popup(formatPopup(plane));
-  planes[plane.icao]['marker'].bindTooltip(planes[plane.icao]['tooltip']);
-  planes[plane.icao]['marker'].bindPopup(planes[plane.icao]['popup']);
+
+  marker.bindTooltip(formatTooltip(plane));
+  marker.bindPopup(formatPopup(plane));
+
+  planes[plane.icao]['marker'] = marker;
+  planes[plane.icao]['tooltip'] = marker.getTooltip();
+  planes[plane.icao]['popup'] = marker.getPopup();
   planes[plane.icao]['track'] = L.layerGroup();
   planes[plane.icao]['last_location'] = latlng;
 }
@@ -216,35 +219,78 @@ function movePlane(map, plane) {
   console.log('[map.js] movePlane called for ICAO', plane.icao, 'with position', plane.latitude, plane.longitude);
 
   var latlng = [plane.latitude, plane.longitude];
-  planes[plane.icao]['marker'].setLatLng(latlng);
-  planes[plane.icao]['marker'].setRotationAngle(headingToRotationAngle(plane.heading));
-  planes[plane.icao]['tooltip'].setContent(formatTooltip(plane));
-  planes[plane.icao]['popup'].setContent(formatPopup(plane));
-  var prev_latlng = planes[plane.icao]['last_location'];
-  planes[plane.icao]['track'].addLayer(L.polyline([prev_latlng, latlng], {color: altitudeColor(plane.altitude)}).addTo(map));
-  planes[plane.icao]['last_location'] = latlng;
+  var entry = planes[plane.icao];
+  if (!entry || !entry['marker']) {
+    console.warn('[map.js] movePlane called but marker missing for ICAO', plane.icao, '; calling addPlane');
+    addPlane(map, plane);
+    return;
+  }
+
+  entry['marker'].setLatLng(latlng);
+  entry['marker'].setRotationAngle(headingToRotationAngle(plane.heading));
+
+  // Ensure tooltip/popup exist; bind them if missing.
+  if (!entry['tooltip']) {
+    entry['marker'].bindTooltip(formatTooltip(plane));
+    entry['tooltip'] = entry['marker'].getTooltip();
+  }
+  if (!entry['popup']) {
+    entry['marker'].bindPopup(formatPopup(plane));
+    entry['popup'] = entry['marker'].getPopup();
+  }
+
+  try {
+    if (entry['tooltip'] && typeof entry['tooltip'].setContent === 'function') {
+      entry['tooltip'].setContent(formatTooltip(plane));
+    }
+  } catch (e) {
+    console.warn('[map.js] Unable to update tooltip for ICAO', plane.icao, e);
+  }
+
+  try {
+    if (entry['popup'] && typeof entry['popup'].setContent === 'function') {
+      entry['popup'].setContent(formatPopup(plane));
+    }
+  } catch (e) {
+    console.warn('[map.js] Unable to update popup for ICAO', plane.icao, e);
+  }
+
+  var prev_latlng = entry['last_location'];
+  entry['track'].addLayer(L.polyline([prev_latlng, latlng], {color: altitudeColor(plane.altitude)}).addTo(map));
+  entry['last_location'] = latlng;
 }
 
 
 function formatTooltip(plane) {
-  return plane.icao + ': ' + plane.callsign;
+  return plane.icao + (plane.callsign ? ' ' + plane.callsign : '');
 }
 
 
 function formatPopup(plane) {
   console.log('[map.js] formatPopup called for ICAO', plane && plane.icao);
+  function fmtNum(v, decimals) {
+    if (v === undefined || v === null) return 'N/A';
+    if (typeof v === 'number') {
+      if (!isFinite(v)) return 'N/A';
+      return v.toFixed(decimals);
+    }
+    var n = Number(v);
+    if (isNaN(n) || !isFinite(n)) return 'N/A';
+    return n.toFixed(decimals);
+  }
 
+  var callsign = plane.callsign || 'N/A';
   var str = '<table>';
-  str += '<tr><td><b>ICAO</b></td><td>' + plane.icao + '</td></tr>';
-  str += '<tr><td><b>Callsign</b></td><td><a href=\"https://www.flightaware.com/live/flight/' + plane.callsign + '\" target=\"_blank\">' + plane.callsign + '</a></td></tr>';
-  str += '<tr><td><b>Datetime</b></td><td>' + plane.datetime + '</td></tr>';
-  str += '<tr><td><b>Altitude</b></td><td>' + plane.altitude + ' ft</td></tr>';
-  str += '<tr><td><b>Vertical Rate</b></td><td>' + plane.vertical_rate + ' ft/min</td></tr>';
-  str += '<tr><td><b>Speed</b></td><td>' + plane.speed.toFixed(0) + ' kt</td></tr>';
-  str += '<tr><td><b>Heading</b></td><td>' + plane.heading.toFixed(0) + ' deg</td></tr>';
-  str += '<tr><td><b>Latitude</b></td><td>' + plane.latitude.toFixed(8) + '</td></tr>';
-  str += '<tr><td><b>Longitude</b></td><td>' + plane.longitude.toFixed(8) + '</td></tr>';
-  str += "</table>"
+  str += '<tr><td><b>ICAO</b></td><td>' + (plane.icao || '') + '</td></tr>';
+  str += '<tr><td><b>Callsign</b></td><td>' + (callsign ? ('<a href="https://www.flightaware.com/live/flight/' + callsign + '" target="_blank">' + callsign + '</a>') : 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Datetime</b></td><td>' + (plane.datetime || 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Altitude</b></td><td>' + (plane.altitude !== null && plane.altitude !== undefined ? fmtNum(plane.altitude, 0) + ' ft' : 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Vertical Rate</b></td><td>' + (plane.vertical_rate !== null && plane.vertical_rate !== undefined ? fmtNum(plane.vertical_rate, 0) + ' ft/min' : 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Speed</b></td><td>' + (plane.speed !== null && plane.speed !== undefined ? fmtNum(plane.speed, 0) + ' kt' : 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Heading</b></td><td>' + (plane.heading !== null && plane.heading !== undefined ? fmtNum(plane.heading, 0) + ' deg' : 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Latitude</b></td><td>' + (plane.latitude !== null && plane.latitude !== undefined ? fmtNum(plane.latitude, 8) : 'N/A') + '</td></tr>';
+  str += '<tr><td><b>Longitude</b></td><td>' + (plane.longitude !== null && plane.longitude !== undefined ? fmtNum(plane.longitude, 8) : 'N/A') + '</td></tr>';
+  str += "</table>";
 
   return str;
 }
@@ -252,7 +298,10 @@ function formatPopup(plane) {
 
 function headingToRotationAngle(heading) {
   console.log('[map.js] headingToRotationAngle called with heading:', heading);
-  return -heading;
+  if (heading === undefined || heading === null) return 0;
+  var h = Number(heading);
+  if (isNaN(h) || !isFinite(h)) return 0;
+  return -h;
 }
 
 
