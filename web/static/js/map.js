@@ -301,7 +301,7 @@ function headingToRotationAngle(heading) {
   if (heading === undefined || heading === null) return 0;
   var h = Number(heading);
   if (isNaN(h) || !isFinite(h)) return 0;
-  return -h;
+  return h - 90;
 }
 
 

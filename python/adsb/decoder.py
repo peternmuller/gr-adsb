@@ -365,15 +365,17 @@ class decoder(gr.sync_block):
 
     def get_direction(self, heading):
         """
+        Convert heading to compass direction.
+        
         Notes:
-            `heading = 0` Eastbound
-            `heading = 90` Northbound
-            `heading = 180/-180` Westbound
-            `heading = -90` Southbound
+            `heading = 0` Northbound
+            `heading = 90` Eastbound
+            `heading = 180` Southbound
+            `heading = 270` Westbound
         """
         heading = (float(heading) + 45/2) % 360
         quad = int(heading / 45)
-        return ("E", "NE", "N", "NW", "W", "SW", "S", "SE")[quad]
+        return ("N", "NE", "E", "SE", "S", "SW", "W", "NW")[quad]
 
 
     def update_plane(self, aa_str):
@@ -1193,7 +1195,8 @@ class decoder(gr.sync_block):
                 speed = np.sqrt(velocity_sn**2 + velocity_we**2)
 
                 # Heading (degrees)
-                heading = np.arctan2(velocity_sn,velocity_we)*360.0/(2.0*np.pi)
+                # Convert from mathematical angle (0° = East) to aviation heading (0° = North)
+                heading = (90 - np.arctan2(velocity_sn,velocity_we)*360.0/(2.0*np.pi)) % 360
 
                 # Vertical Rate (ft/min)
                 vertical_rate = (vr - 1)*64
