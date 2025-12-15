@@ -379,17 +379,18 @@ class decoder(gr.sync_block):
 
 
     def update_plane(self, aa_str):
+        current_time = int(time.time())
         if aa_str in self.plane_dict:
             # The current plane already exists in the dictionary
 
             # If the plane has timed out, delete its old altimetry values
-            # seconds_since_last_seen = (int(time.time()) - self.plane_dict[aa_str]["last_seen"])
+            # seconds_since_last_seen = current_time - self.plane_dict[aa_str]["last_seen"]
             # if seconds_since_last_seen > PLANE_TIMEOUT_S:
             #     # self.webserver_remove_plane(self.aa_str)
             #     self.reset_plane_altimetry(self.plane_dict[aa_str])
 
             self.plane_dict[aa_str]["num_msgs"] += 1
-            self.plane_dict[aa_str]["last_seen"] = int(time.time())
+            self.plane_dict[aa_str]["last_seen"] = current_time
 
         else:
             # Create empty dictionary for the current plane
@@ -398,12 +399,12 @@ class decoder(gr.sync_block):
             self.reset_plane_altimetry(self.plane_dict[aa_str])
 
             self.plane_dict[aa_str]["num_msgs"] = 1
-            self.plane_dict[aa_str]["last_seen"] = int(time.time())
+            self.plane_dict[aa_str]["last_seen"] = current_time
 
         # # Check if any planes have timed out and if so remove them
         # # from the dictionary
         # for key in self.plane_dict.keys():
-        #     if (int(time.time()) - self.plane_dict[key]["last_seen"]) > PLANE_TIMEOUT_S:
+        #     if (current_time - self.plane_dict[key]["last_seen"]) > PLANE_TIMEOUT_S:
         #         del self.plane_dict[key]
 
 
