@@ -1,7 +1,7 @@
 options:
   parameters:
     alias: ''
-    author: Matt Hostetter
+    author: Matt Hostetter, Peter Muller
     catch_exceptions: 'True'
     comment: ''
     copyright: ''
@@ -263,7 +263,7 @@ blocks:
     bus_sink: false
     bus_source: false
     bus_structure: null
-    coordinate: [1024, 208.0]
+    coordinate: [1048, 208.0]
     rotation: 0
     state: enabled
 - name: qtgui_waterfall_sink_x_0
@@ -325,6 +325,40 @@ blocks:
     bus_source: false
     bus_structure: null
     coordinate: [360, 208.0]
+    rotation: 0
+    state: enabled
+- name: sqlite_sink_0
+  id: sqlite_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    filename: /home/peter/gr-sqlite/adsb.db
+    fixed_position_columns: '[]'
+    table_name: demodulated
+    vector_column_name: data
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1048, 320.0]
+    rotation: 0
+    state: enabled
+- name: sqlite_sink_0_0
+  id: sqlite_sink
+  parameters:
+    affinity: ''
+    alias: ''
+    comment: ''
+    filename: /home/peter/gr-sqlite/adsb-decoded.db
+    fixed_position_columns: '[]'
+    table_name: decoded
+    vector_column_name: data
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [1368, 208.0]
     rotation: 0
     state: enabled
 - name: uhd_usrp_source_0
@@ -781,9 +815,11 @@ blocks:
     state: enabled
 
 connections:
+- [adsb_decoder_0, decoded, sqlite_sink_0_0, pdu]
 - [adsb_decoder_0, decoded, zeromq_pub_msg_sink_0, in]
 - [adsb_demod_0, '0', qtgui_time_sink_x_0, '0']
 - [adsb_demod_0, demodulated, adsb_decoder_0, demodulated]
+- [adsb_demod_0, demodulated, sqlite_sink_0, pdu]
 - [adsb_framer_1, '0', adsb_demod_0, '0']
 - [analog_const_source_x_0, '0', qtgui_time_sink_x_0, '1']
 - [blocks_complex_to_mag_squared_0, '0', adsb_framer_1, '0']
@@ -792,4 +828,4 @@ connections:
 
 metadata:
   file_format: 1
-  grc_version: v3.11.0.0git-998-gfba19e19
+  grc_version: v3.11.0.0git-1082-g205e1fdf

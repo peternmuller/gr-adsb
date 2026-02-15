@@ -6,11 +6,11 @@
 #
 # GNU Radio Python Flow Graph
 # Title: ADS-B Receiver
-# Author: Matt Hostetter
-# GNU Radio version: v3.11.0.0git-998-gfba19e19
+# Author: Matt Hostetter, Peter Muller
+# GNU Radio version: v3.11.0.0git-1082-g205e1fdf
 
-from PyQt5 import Qt
 from gnuradio import qtgui
+from PyQt5 import Qt
 from gnuradio import analog
 from gnuradio import blocks
 from gnuradio import eng_notation
@@ -19,6 +19,7 @@ import time
 from gnuradio import zeromq
 import gnuradio.adsb as adsb
 import sip
+import sqlite
 import threading
 from gnuradio import gr
 from gnuradio.filter import firdes
@@ -114,6 +115,8 @@ class adsb_rx(gr.top_block, Qt.QWidget):
         self.uhd_usrp_source_0.set_center_freq(fc, 0)
         self.uhd_usrp_source_0.set_antenna('TX/RX', 0)
         self.uhd_usrp_source_0.set_gain(gain, 0)
+        self.sqlite_sink_0_0 = sqlite.sink('/home/peter/gr-sqlite/adsb-decoded.db', 'decoded', 'data', [])
+        self.sqlite_sink_0 = sqlite.sink('/home/peter/gr-sqlite/adsb.db', 'demodulated', 'data', [])
         self.qtgui_waterfall_sink_x_0 = qtgui.waterfall_sink_c(
             1024, #size
             window.WIN_BLACKMAN_hARRIS, #wintype
@@ -212,8 +215,10 @@ class adsb_rx(gr.top_block, Qt.QWidget):
         ##################################################
         # Connections
         ##################################################
+        self.msg_connect((self.adsb_decoder_0, 'decoded'), (self.sqlite_sink_0_0, 'pdu'))
         self.msg_connect((self.adsb_decoder_0, 'decoded'), (self.zeromq_pub_msg_sink_0, 'in'))
         self.msg_connect((self.adsb_demod_0, 'demodulated'), (self.adsb_decoder_0, 'demodulated'))
+        self.msg_connect((self.adsb_demod_0, 'demodulated'), (self.sqlite_sink_0, 'pdu'))
         self.connect((self.adsb_demod_0, 0), (self.qtgui_time_sink_x_0, 0))
         self.connect((self.adsb_framer_1, 0), (self.adsb_demod_0, 0))
         self.connect((self.analog_const_source_x_0, 0), (self.qtgui_time_sink_x_0, 1))
